@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "api/mcp.ts": {
+      "includeFiles": "data/ai-ux-pattern-library.md"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/mcp"
+    }
+  ]
+}
