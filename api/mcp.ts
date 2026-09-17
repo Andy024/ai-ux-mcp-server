@@ -1,4 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import * as z from "zod/v4";
@@ -35,6 +37,37 @@ function textResult(data: unknown, isError = false) {
   };
 }
 
+let cachedFormattingGuide: string | null = null;
+
+function loadFormattingGuide(): string {
+  if (cachedFormattingGuide !== null) {
+    return cachedFormattingGuide;
+  }
+  try {
+    const filePath = join(
+      process.cwd(),
+      ".claude",
+      "skills",
+      "ai-ux-pattern-suggestions",
+      "SKILL.md",
+    );
+    cachedFormattingGuide = readFileSync(filePath, "utf8");
+  } catch {
+    cachedFormattingGuide = "";
+  }
+  return cachedFormattingGuide;
+}
+
+function withFormatting(results: unknown) {
+  return textResult({
+    formatting_instructions: loadFormattingGuide(),
+    results,
+  });
+}
+
+const FORMATTING_NUDGE =
+  "Response includes formatting_instructions — follow them exactly when presenting results to a user.";
+
 const COMPACT_NUDGE =
   "Returns compact identifiers only — call get_pattern for one id, or get_patterns for multiple ids, to get full detail (what it is, when to use, examples, risk) before explaining a pattern to the user.";
 
@@ -47,7 +80,7 @@ function createServer(): McpServer {
   server.registerTool(
     "search_patterns",
     {
-      description: `Case-insensitive substring search across pattern name, description, and when_to_use. Returns up to 8 compact summaries. ${COMPACT_NUDGE}`,
+      description: `Case-insensitive substring search across pattern name, description, and when_to_use. Returns up to 8 compact summaries. ${COMPACT_NUDGE} ${FORMATTING_NUDGE}`,
       inputSchema: {
         query: z.string().describe("Search query string"),
       },
@@ -71,14 +104,14 @@ function createServer(): McpServer {
         }
       }
 
-      return textResult(matches);
+      return withFormatting(matches);
     },
   );
 
   server.registerTool(
     "filter",
     {
-      description: `Filter patterns by category and/or type (pattern | principle). At least one filter is required. ${COMPACT_NUDGE}`,
+      description: `Filter patterns by category and/or type (pattern | principle). At least one filter is required. ${COMPACT_NUDGE} ${FORMATTING_NUDGE}`,
       inputSchema: {
         category: z
           .string()
@@ -110,15 +143,14 @@ function createServer(): McpServer {
         })
         .map(toSummary);
 
-      return textResult(results);
+      return withFormatting(results);
     },
   );
 
   server.registerTool(
     "get_pattern",
     {
-      description:
-        "Return the full pattern object for a single id (all fields). Use this only when you need detail for one id; prefer get_patterns when fetching several.",
+      description: `Return the full pattern object for a single id (all fields). Use this only when you need detail for one id; prefer get_patterns when fetching several. ${FORMATTING_NUDGE}`,
       inputSchema: {
         id: z.string().describe("Pattern id (e.g. raw-text-input)"),
       },
@@ -131,15 +163,14 @@ function createServer(): McpServer {
           true,
         );
       }
-      return textResult(pattern);
+      return withFormatting(pattern);
     },
   );
 
   server.registerTool(
     "get_patterns",
     {
-      description:
-        "Return full pattern objects for multiple ids in one call (all fields, same order as input). Prefer this over repeated get_pattern calls when you already know several ids. Missing ids appear as { id, error: \"not_found\" } in that position without failing the batch.",
+      description: `Return full pattern objects for multiple ids in one call (all fields, same order as input). Prefer this over repeated get_pattern calls when you already know several ids. Missing ids appear as { id, error: "not_found" } in that position without failing the batch. ${FORMATTING_NUDGE}`,
       inputSchema: {
         ids: z
           .array(z.string())
@@ -149,7 +180,7 @@ function createServer(): McpServer {
       },
     },
     async ({ ids }) => {
-      return textResult(getPatternsByIds(ids));
+      return withFormatting(getPatternsByIds(ids));
     },
   );
 
