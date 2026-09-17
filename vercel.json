@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/mcp.ts": {
-      "includeFiles": "{data/ai-ux-pattern-library.md,.claude/skills/ai-ux-pattern-suggestions/SKILL.md}"
+      "includeFiles": "data/ai-ux-pattern-library.md"
     }
   },
   "rewrites": [

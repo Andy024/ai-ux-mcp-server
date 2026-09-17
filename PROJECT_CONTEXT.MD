@@ -17,7 +17,6 @@ ai-ux-mcp-server/
 ├── api/mcp.ts              # Vercel handler + MCP tools
 ├── lib/parser.ts           # YAML extract/parse/cache
 ├── data/ai-ux-pattern-library.md   # Source of truth for patterns
-├── .claude/skills/ai-ux-pattern-suggestions/SKILL.md  # Formatting guide (bundled)
 ├── package.json            # ESM; typecheck only (no build script)
 ├── tsconfig.json           # ES2022, module NodeNext, strict
 ├── vercel.json             # includeFiles + rewrites only
@@ -30,7 +29,6 @@ ai-ux-mcp-server/
 2. Handler creates a fresh `McpServer` + `StreamableHTTPServerTransport` per request (`sessionIdGenerator: undefined`, `enableJsonResponse: true`).
 3. Tools call `parsePatternLibrary()` / `getCategories()` from `lib/parser.ts`.
 4. Parser reads the markdown once per cold instance, extracts ` ```yaml ` blocks, parses with `js-yaml`, validates shape, caches in a module-level variable.
-5. Data tools also embed `formatting_instructions` from `.claude/skills/ai-ux-pattern-suggestions/SKILL.md` (read once per cold instance and cached, same as the pattern library).
 
 - **GET** → HTML connection guide (Delighto-styled), with MCP URL derived from `Host` / `x-forwarded-proto`.
 - **DELETE** (and other non-POST) → `405` JSON-RPC.
@@ -67,10 +65,10 @@ Parser helpers: `getPatternsByIds` (O(1) map lookup).
 
 | Tool | Input | Behavior |
 |------|--------|----------|
-| `search_patterns` | `{ query }` | Case-insensitive substring on `name`, `what_it_is`, `when_to_use` joined; max **8** summaries. Response: `{ formatting_instructions, results }` |
-| `filter` | `{ category?, type? }` | At least one filter required; all matching summaries. Response: `{ formatting_instructions, results }` |
-| `get_pattern` | `{ id }` | Full object or not-found error (single id). Response: `{ formatting_instructions, results }` |
-| `get_patterns` | `{ ids }` (1–25) | Full objects in input order; `{ id, error: "not_found" }` per miss. Response: `{ formatting_instructions, results }` |
+| `search_patterns` | `{ query }` | Case-insensitive substring on `name`, `what_it_is`, `when_to_use` joined; max **8** summaries |
+| `filter` | `{ category?, type? }` | At least one filter required; all matching summaries |
+| `get_pattern` | `{ id }` | Full object or not-found error (single id) |
+| `get_patterns` | `{ ids }` (1–25) | Full objects in input order; `{ id, error: "not_found" }` per miss |
 | `list_categories` | `{}` | Sorted unique categories |
 
 Inputs validated with Zod (`zod/v4`), registered via `server.registerTool`.
@@ -78,9 +76,9 @@ Inputs validated with Zod (`zod/v4`), registered via `server.registerTool`.
 ## Deploy / local
 
 - **Production:** https://ai-ux-mcp-server.vercel.app/ (MCP at `/api/mcp`).
-- **Config:** `vercel.json` must stay API-only: `functions.api/mcp.ts.includeFiles` for the pattern library markdown **and** `.claude/skills/ai-ux-pattern-suggestions/SKILL.md` + `rewrites`. Never add `buildCommand`, `outputDirectory`, or a `public/` folder.
+- **Config:** `vercel.json` must stay API-only: `functions.api/mcp.ts.includeFiles` for the markdown + `rewrites`. Never add `buildCommand`, `outputDirectory`, or a `public/` folder.
 - **package.json:** There is **no** `"build"` script on purpose. A `tsc` build caused Vercel to treat this as a static site. Keep `"typecheck": "tsc --noEmit"` for local checks.
-- **Asset shipping:** NFT will not auto-bundle the markdown or skill file; `includeFiles` is required for both.
+- **Asset shipping:** NFT will not auto-bundle the markdown; `includeFiles` is required.
 - **Local:** `vercel dev`. Do not invent a frontend build step.
 
 ## Conventions & constraints
