@@ -30,7 +30,15 @@ ai-ux-mcp-server/
 3. Tools call `parsePatternLibrary()` / `getCategories()` from `lib/parser.ts`.
 4. Parser reads the markdown once per cold instance, extracts ` ```yaml ` blocks, parses with `js-yaml`, validates shape, caches in a module-level variable.
 
-`GET` / `DELETE` return `405` (stateless; no SSE session lifecycle).
+- **GET** → HTML connection guide (Delighto-styled), with MCP URL derived from `Host` / `x-forwarded-proto`.
+- **DELETE** (and other non-POST) → `405` JSON-RPC.
+- **POST** → MCP Streamable HTTP (stateless).
+
+## Production
+
+- Site: https://ai-ux-mcp-server.vercel.app/
+- MCP endpoint: https://ai-ux-mcp-server.vercel.app/api/mcp
+- Do not hardcode the domain in tool configs inside `api/mcp.ts`; the guide interpolates it from the request.
 
 ## Domain model
 
@@ -49,25 +57,29 @@ ai-ux-mcp-server/
 | `examples` | `{ product, description }[]` |
 | `risk` | Caveat |
 
-**Compact summary** (search/filter tools): `{ id, name, category, type, why_to_use }` only.
+**Compact summary** (search/filter tools): `{ id, name, category, type }` only.
+
+Parser helpers: `getPatternsByIds` (O(1) map lookup).
 
 ## MCP tools
 
 | Tool | Input | Behavior |
 |------|--------|----------|
-| `search_patterns` | `{ query }` | Case-insensitive substring on `name`, `what_it_is`, `when_to_use` joined; max **15** summaries |
+| `search_patterns` | `{ query }` | Case-insensitive substring on `name`, `what_it_is`, `when_to_use` joined; max **8** summaries |
 | `filter` | `{ category?, type? }` | At least one filter required; all matching summaries |
-| `get_pattern` | `{ id }` | Full object or not-found error |
+| `get_pattern` | `{ id }` | Full object or not-found error (single id) |
+| `get_patterns` | `{ ids }` (1–25) | Full objects in input order; `{ id, error: "not_found" }` per miss |
 | `list_categories` | `{}` | Sorted unique categories |
 
 Inputs validated with Zod (`zod/v4`), registered via `server.registerTool`.
 
 ## Deploy / local
 
+- **Production:** https://ai-ux-mcp-server.vercel.app/ (MCP at `/api/mcp`).
 - **Config:** `vercel.json` must stay API-only: `functions.api/mcp.ts.includeFiles` for the markdown + `rewrites`. Never add `buildCommand`, `outputDirectory`, or a `public/` folder.
 - **package.json:** There is **no** `"build"` script on purpose. A `tsc` build caused Vercel to treat this as a static site. Keep `"typecheck": "tsc --noEmit"` for local checks.
 - **Asset shipping:** NFT will not auto-bundle the markdown; `includeFiles` is required.
-- **Local:** `vercel dev` (user may already run this). Do not invent a frontend build step.
+- **Local:** `vercel dev`. Do not invent a frontend build step.
 
 ## Conventions & constraints
 

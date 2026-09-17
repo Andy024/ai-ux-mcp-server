@@ -4,13 +4,14 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import * as z from "zod/v4";
 import {
   getCategories,
+  getPatternsByIds,
   parsePatternLibrary,
   type UXPattern,
 } from "../lib/parser.js";
 
 type PatternSummary = Pick<
   UXPattern,
-  "id" | "name" | "category" | "type" | "why_to_use"
+  "id" | "name" | "category" | "type"
 >;
 
 function toSummary(pattern: UXPattern): PatternSummary {
@@ -19,7 +20,6 @@ function toSummary(pattern: UXPattern): PatternSummary {
     name: pattern.name,
     category: pattern.category,
     type: pattern.type,
-    why_to_use: pattern.why_to_use,
   };
 }
 
@@ -35,6 +35,9 @@ function textResult(data: unknown, isError = false) {
   };
 }
 
+const COMPACT_NUDGE =
+  "Returns compact identifiers only — call get_pattern for one id, or get_patterns for multiple ids, to get full detail (what it is, when to use, examples, risk) before explaining a pattern to the user.";
+
 function createServer(): McpServer {
   const server = new McpServer({
     name: "ai-ux-mcp-server",
@@ -44,8 +47,7 @@ function createServer(): McpServer {
   server.registerTool(
     "search_patterns",
     {
-      description:
-        "Case-insensitive substring search across pattern name, description, and when_to_use. Returns up to 15 compact summaries.",
+      description: `Case-insensitive substring search across pattern name, description, and when_to_use. Returns up to 8 compact summaries. ${COMPACT_NUDGE}`,
       inputSchema: {
         query: z.string().describe("Search query string"),
       },
@@ -65,7 +67,7 @@ function createServer(): McpServer {
 
         if (haystack.includes(needle)) {
           matches.push(toSummary(pattern));
-          if (matches.length >= 15) break;
+          if (matches.length >= 8) break;
         }
       }
 
@@ -76,8 +78,7 @@ function createServer(): McpServer {
   server.registerTool(
     "filter",
     {
-      description:
-        "Filter patterns by category and/or type (pattern | principle). At least one filter is required.",
+      description: `Filter patterns by category and/or type (pattern | principle). At least one filter is required. ${COMPACT_NUDGE}`,
       inputSchema: {
         category: z
           .string()
@@ -117,7 +118,7 @@ function createServer(): McpServer {
     "get_pattern",
     {
       description:
-        "Return the full pattern object for a given id (all fields).",
+        "Return the full pattern object for a single id (all fields). Use this only when you need detail for one id; prefer get_patterns when fetching several.",
       inputSchema: {
         id: z.string().describe("Pattern id (e.g. raw-text-input)"),
       },
@@ -135,10 +136,27 @@ function createServer(): McpServer {
   );
 
   server.registerTool(
-    "list_categories",
+    "get_patterns",
     {
       description:
-        "List all unique category values in the pattern library so you can filter by valid options.",
+        "Return full pattern objects for multiple ids in one call (all fields, same order as input). Prefer this over repeated get_pattern calls when you already know several ids. Missing ids appear as { id, error: \"not_found\" } in that position without failing the batch.",
+      inputSchema: {
+        ids: z
+          .array(z.string())
+          .min(1)
+          .max(25)
+          .describe("Pattern ids to fetch (1–25)"),
+      },
+    },
+    async ({ ids }) => {
+      return textResult(getPatternsByIds(ids));
+    },
+  );
+
+  server.registerTool(
+    "list_categories",
+    {
+      description: `List all unique category values in the pattern library so you can filter by valid options. ${COMPACT_NUDGE}`,
       inputSchema: {},
     },
     async () => {
@@ -469,6 +487,16 @@ function renderInfoPage(mcpUrl: string): string {
       line-height: 1.45;
       color: var(--secondary);
     }
+    .client-card ol ul {
+      margin: 8px 0 4px;
+      padding-left: 1.1rem;
+      list-style: disc;
+    }
+    .client-card ol ul li {
+      margin: 6px 0;
+      font-size: 14px;
+      line-height: 1.45;
+    }
     code, pre {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
     }
@@ -616,7 +644,13 @@ function renderInfoPage(mcpUrl: string): string {
           <section class="client-card" id="claude-desktop">
             <h3>Claude Desktop</h3>
             <ol>
-              <li>Open <code>claude_desktop_config.json</code>.</li>
+              <li>Open <code>claude_desktop_config.json</code> on your machine:
+                <ul>
+                  <li><strong>Windows:</strong> <code>%APPDATA%\Claude\claude_desktop_config.json</code> (typically <code>C:\Users\YourUsername\AppData\Roaming\Claude\claude_desktop_config.json</code>)</li>
+                  <li><strong>macOS:</strong> <code>~/Library/Application Support/Claude/claude_desktop_config.json</code></li>
+                  <li><strong>Linux:</strong> <code>~/.config/Claude/claude_desktop_config.json</code></li>
+                </ul>
+              </li>
               <li>Paste the block below into your MCP servers list.</li>
               <li>Fully quit Claude Desktop, then reopen it.</li>
             </ol>
@@ -694,7 +728,7 @@ function renderInfoPage(mcpUrl: string): string {
         <h2>Check it worked</h2>
         <div class="verify">
           <p>Ask your AI assistant something like this. If it’s connected, the answer should mention specific pattern names and sources from this library.</p>
-          <p class="sample">“What AI UX patterns exist for onboarding? Use the ai-ux-patterns tool.”</p>
+          <p class="sample">use the ai ux patterns mcp ,  can you tell me what all ai pattern would be useful for create travel  agent that help user to search the ticket</p>
         </div>
       </section>
 
@@ -709,6 +743,9 @@ function renderInfoPage(mcpUrl: string): string {
           </a>
           <a href="https://www.youtube.com/@UserInsightHub" target="_blank" rel="noopener noreferrer" aria-label="YouTube">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M23.498 6.186a2.997 2.997 0 00-2.11-2.121C19.505 3.546 12 3.546 12 3.546s-7.505 0-9.388.519A2.997 2.997 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a2.997 2.997 0 002.11 2.121c1.883.519 9.388.519 9.388.519s7.505 0 9.388-.519a2.997 2.997 0 002.11-2.121C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+          </a>
+          <a href="https://www.mdelighto.com" target="_blank" rel="noopener noreferrer" aria-label="Website mdelighto.com">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
           </a>
         </div>
       </footer>

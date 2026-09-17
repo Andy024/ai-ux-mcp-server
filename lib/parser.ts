@@ -17,6 +17,11 @@ export interface UXPattern {
 }
 
 let cachedPatterns: UXPattern[] | null = null;
+let cachedPatternsById: Map<string, UXPattern> | null = null;
+
+export type PatternLookupResult =
+  | UXPattern
+  | { id: string; error: "not_found" };
 
 const YAML_BLOCK_RE = /```yaml\r?\n([\s\S]*?)```/g;
 
@@ -79,7 +84,12 @@ function loadPatternsFromFile(): UXPattern[] {
         );
         continue;
       }
-      patterns.push(parsed);
+      patterns.push({
+        ...parsed,
+        what_it_is: parsed.what_it_is.trimEnd(),
+        why_to_use: parsed.why_to_use.trimEnd(),
+        risk: parsed.risk.trimEnd(),
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`Skipping YAML block #${blockIndex}: failed to parse — ${message}`);
@@ -98,7 +108,21 @@ export function parsePatternLibrary(): UXPattern[] {
     return cachedPatterns;
   }
   cachedPatterns = loadPatternsFromFile();
+  cachedPatternsById = new Map(
+    cachedPatterns.map((pattern) => [pattern.id, pattern]),
+  );
   return cachedPatterns;
+}
+
+/**
+ * Look up full pattern objects by id in input order.
+ * Missing ids yield `{ id, error: "not_found" }` without failing the batch.
+ * Uses an O(1) map built once when the library is first parsed.
+ */
+export function getPatternsByIds(ids: string[]): PatternLookupResult[] {
+  parsePatternLibrary();
+  const byId = cachedPatternsById!;
+  return ids.map((id) => byId.get(id) ?? { id, error: "not_found" });
 }
 
 /**
